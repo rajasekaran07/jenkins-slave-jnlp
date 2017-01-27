@@ -1,0 +1,39 @@
+FROM jenkinsci/jnlp-slave
+
+
+ENV DOCKER_BUCKET get.docker.com
+ENV DOCKER_VERSION 1.9.1
+ENV DOCKER_SHA256 52286a92999f003e1129422e78be3e1049f963be1888afc3c9a99d5a9af04666
+ENV DOCKER_HOME /usr/bin/docker
+ENV DOCKER_HOST unix:///var/run/docker.sock
+# GID currently in use by AWS EC2 Container Service
+ENV DOCKER_GID 497
+
+
+USER root
+
+ARG JENKINS_REMOTING_VERSION=3.4
+
+RUN curl --create-dirs -sSLo /usr/share/jenkins/slave.jar http://repo.jenkins-ci.org/public/org/jenkins-ci/main/remoting/$JENKINS_REMOTING_VERSION/remoting-$JENKINS_REMOTING_VERSION.jar \
+  && chmod 755 /usr/share/jenkins \
+  && chmod 644 /usr/share/jenkins/slave.jar
+
+COPY jenkins-slave /usr/local/bin/jenkins-slave
+
+RUN chmod a+rwx /home/jenkins
+WORKDIR /home/jenkins
+
+
+RUN curl -fSL "https://${DOCKER_BUCKET}/builds/Linux/x86_64/docker-$DOCKER_VERSION" -o ${DOCKER_HOME} \
+    && echo "${DOCKER_SHA256} ${DOCKER_HOME}" | sha256sum -c - \
+    && chmod +x ${DOCKER_HOME}
+
+RUN groupadd -g ${DOCKER_GID} docker
+RUN usermod -aG docker jenkins
+RUN gpasswd -a jenkins docker
+RUN echo "jenkins ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.tmp
+
+#RUN systemctl restart docker
+USER jenkins
+
+ENTRYPOINT ["/opt/bin/entry_point.sh", "/usr/local/bin/jenkins-slave"]
